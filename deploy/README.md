@@ -8,7 +8,15 @@ deploy/
 ├── start.sh               # 启动脚本（自动适配各种 Python 环境）
 ├── stop.sh                # 停止脚本
 ├── download_python.sh     # Python 3.12 便携版下载工具（在能联网的机器上运行）
-├── bridge.py              # 桥接服务主程序
+├── bridge/                # 桥接服务包（Python package）
+│   ├── __init__.py        # FastAPI 应用 + 路由
+│   ├── __main__.py        # 入口点
+│   ├── config.py          # 配置管理
+│   ├── models.py          # 数据模型
+│   ├── database.py        # SQLite 操作
+│   ├── auth.py            # Webhook HMAC 签名验证
+│   ├── lightrag_client.py # LightRAG API 客户端
+│   └── tasks.py           # 任务队列 + 业务逻辑
 ├── requirements.txt       # Python 依赖清单
 ├── .env                   # 配置文件（部署前需修改）
 ├── README.md              # 本说明文件

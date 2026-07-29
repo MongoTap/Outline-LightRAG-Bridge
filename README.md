@@ -43,7 +43,7 @@
 | **Linux 服务器** | x86_64 架构，已安装 Docker |
 | **Docker 版本** | ≥ 20.10 |
 | **已有服务** | 局域网中已有可用的 Outline 和 LightRAG 服务 |
-| **离线镜像包** | `outline-rag-bridge-image.tar.gz`（已提前构建好，约 58MB） |
+| **离线镜像包** | `outline-rag-bridge-v1.0.0.tar.gz`（已提前构建好，约 58MB） |
 
 ---
 
@@ -51,7 +51,8 @@
 
 ```bash
 # 在 tar.gz 文件所在目录执行
-docker load < outline-rag-bridge-image.tar.gz
+docker load < outline-rag-bridge-v1.0.0.tar.gz
+docker tag outline-rag-bridge:latest outline-rag-bridge:latest 2>/dev/null || true
 
 # 验证镜像已导入
 docker images outline-rag-bridge
