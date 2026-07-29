@@ -1,5 +1,7 @@
 # OutlineRAGBridge — 离线 Docker 部署教程
 
+[![中文](https://img.shields.io/badge/语言-中文-blue)](README.md) [![English](https://img.shields.io/badge/lang-English-green)](README.en.md)
+
 将 Outline 文档变更通过 Webhook 实时同步到 LightRAG 的桥接服务。
 本教程适用于**完全离线的局域网环境**。
 
@@ -7,27 +9,19 @@
 
 ## 部署架构
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                        局域网（离线）                              │
-│                                                                  │
-│   ┌──────────────┐     POST /webhook      ┌──────────────────┐   │
-│   │   Outline     │ ─────────────────────→ │  outline-rag-    │   │
-│   │  (已有服务)    │    http://bridge-ip    │  bridge 容器      │   │
-│   │   IP: a.b.c.d │    :9641/webhook       │                   │   │
-│   └──────────────┘                         │  POST /documents/ │   │
-│                                            │  text             │   │
-│   ┌──────────────┐                         │  GET /track_status│   │
-│   │   LightRAG    │ ←───────────────────── │  DELETE /documents│   │
-│   │  (已有服务)    │    http://lightrag-ip  └────────┬──────────┘   │
-│   │   IP: x.y.z.w │    :9621                       │              │
-│   └──────────────┘                         ┌────────┴──────────┐   │
-│                                            │   bridge.db        │   │
-│                                            │  (Docker volume)   │   │
-│                                            └───────────────────┘   │
-└─────────────────────────────────────────────────────────────────┘
-```
+```mermaid
+graph LR
+    subgraph LAN[局域网（离线）]
+        O["Outline<br/>(已有服务)<br/>IP: a.b.c.d"]
+        B["outline-rag-bridge 容器<br/>端口 9641"]
+        L["LightRAG<br/>(已有服务)<br/>IP: x.y.z.w<br/>端口 9621"]
+        DB[("bridge.db<br/>(Docker volume)")]
+    end
 
+    O -- "POST /webhook" --> B
+    B -- "POST /documents/text<br/>GET /track_status<br/>DELETE /documents" --> L
+    B -.-> DB
+```
 **核心接口：**
 - **入站**（供 Outline 发送 Webhook）：容器 `9641` 端口，HTTP `POST /webhook`
 - **出站**（连接 LightRAG）：通过环境变量 `LIGHTRAG_API_URL` 配置
@@ -60,31 +54,21 @@ docker images outline-rag-bridge
 # REPOSITORY               TAG       IMAGE ID       SIZE
 # outline-rag-bridge       latest    246e7e4f0301   253MB
 ```
-
 ---
-
 ## 步骤二：配置环境变量
-
 启动容器前，需要知道两个信息：
-
 1. **LightRAG 服务器的 IP 地址和端口**（例如 `192.168.1.10:9621`）
 2. **一个 Webhook 密钥**（自行生成一个随机字符串，例如 `my-strong-secret-2024`）
-
 | 配置项 | 是否必填 | 说明 | 示例 |
 |---|---|---|---|
 | `LIGHTRAG_API_URL` | **必填** | LightRAG 服务的 IP:端口 | `http://192.168.1.10:9621` |
 | `OUTLINE_WEBHOOK_SECRET` | **必填** | Webhook HMAC 密钥，须与 Outline 后台一致 | `my-strong-secret-2024` |
-
 > **提示**：
 > - LightRAG 和 bridge 在同一台机器时，Linux 下用 `http://host.docker.internal:9621` 不保证可用，建议直接用宿主机内网 IP
 > - LightRAG 在另一台服务器时，确保 bridge 服务器的 9641 端口在局域网内可达（防火墙放行）
-
 ---
-
 ## 步骤三：启动容器
-
 ### 方式 A：直接 docker run（推荐）
-
 ```bash
 # 请将以下值替换为你的实际配置
 docker run -d \
@@ -96,16 +80,13 @@ docker run -d \
   -v bridge-data:/app/data \
   outline-rag-bridge:latest
 ```
-
 参数说明：
 - `-d`：后台运行
 - `--restart unless-stopped`：容器崩溃或服务器重启时自动拉起
 - `-p 9641:9641`：将宿主机 9641 端口映射到容器 9641 端口
 - `-e`：配置环境变量（见上表）
 - `-v bridge-data:/app/data`：持久化 SQLite 数据库文件（映射记录）
-
 ### 方式 B：docker-compose
-
 创建 `docker-compose.yml`：
 ```yaml
 services:
@@ -121,20 +102,15 @@ services:
       - DB_PATH=/app/data/bridge.db
     volumes:
       - bridge-data:/app/data
-
 volumes:
   bridge-data:
 ```
-
 启动：
 ```bash
 docker compose up -d
 ```
-
 ---
-
 ## 步骤四：配置 Outline Webhook
-
 1. 登录 Outline 管理后台 → **设置** → **集成** → **Webhook**
 2. 点击 **创建 Webhook**，填写：
    - **名称**：`bridge-sync`（自定义）
@@ -144,54 +120,40 @@ docker compose up -d
    - **密钥**：填入 `OUTLINE_WEBHOOK_SECRET` 中设置的值（本例：`my-strong-secret-2024`）
    - **事件**：勾选 `documents.create`、`documents.update`、`documents.delete`
 3. 点击 **保存**
-
 > **注意**：如果 Outline 在 Docker 中运行（常见），它默认禁止向私有 IP 发送 Webhook。需要在 Outline 的 `docker-compose.yml` 中添加环境变量后重启：
 > ```yaml
 > environment:
 >   - ALLOWED_PRIVATE_IP_ADDRESSES=172.22.0.1,172.17.0.1,192.168.0.0/16
 > ```
-
 ---
-
 ## 步骤五：验证部署
-
 ```bash
 # 1. 检查容器状态和健康检查
 docker ps --filter name=outline-rag-bridge
 docker inspect --format='{{json .State.Health.Status}}' outline-rag-bridge
 # 预期输出："healthy"
-
 # 2. 测试健康端点
 curl http://localhost:9641/health
 # 预期输出：
 # {"status":"ok","lightrag_api":"http://192.168.1.10:9621","timestamp":"..."}
-
 # 3. 查看初始映射表（应为空）
 curl http://localhost:9641/mappings
 # 预期输出：{"mappings":[]}
-
 # 4. 确认运行用户为非 root
 docker exec outline-rag-bridge whoami
 # 预期输出：appuser
-
 # 5. 测试 LightRAG 连通性
 docker exec outline-rag-bridge curl -sf http://192.168.1.10:9621/health
 # 如果返回正常，说明 LightRAG 连接成功
-
 # 6. 查看容器日志
 docker logs outline-rag-bridge
 ```
-
 ---
-
 ## 全流程测试
-
 在 Outline 中创建一个文档，验证 Webhook → Bridge → LightRAG 链路：
-
 ```bash
 # 1. 观察桥接器日志
 docker logs -f outline-rag-bridge &
-
 # 2. 通过 Outline API 创建一个文档（将 TOKEN 替换为你的 Outline API Key）
 curl -s -X POST http://localhost:8080/api/documents.create \
   -H "Content-Type: application/json" \
@@ -202,20 +164,15 @@ curl -s -X POST http://localhost:8080/api/documents.create \
     "collectionId": "你的集合ID",
     "publish": true
   }'
-
 # 3. 预期日志输出：
 #    收到 Webhook: event=documents.create doc_id=xxx title=测试文档
 #    处理文档创建: outline_doc_id=xxx title=测试文档
 #    文本已插入 LightRAG，track_id=insert_xxx
-
 # 4. 验证 LightRAG 中已有文档
 curl http://localhost:9621/documents | python3 -m json.tool
 ```
-
 ---
-
 ## 所有配置项参考
-
 | 变量 | 默认值 | 必填 | 说明 |
 |---|---|---|---|
 | `LIGHTRAG_API_URL` | `http://lightrag:9621` | **是** | LightRAG API 基础地址 |
@@ -227,26 +184,20 @@ curl http://localhost:9621/documents | python3 -m json.tool
 | `DELETE_RETRY_ATTEMPTS` | `3` | 否 | 删除文档时最大重试次数 |
 | `DELETE_RETRY_DELAY` | `5` | 否 | 删除重试间隔（秒） |
 | `LOG_LEVEL` | `INFO` | 否 | 日志级别：`DEBUG`/`INFO`/`WARNING`/`ERROR` |
-
 ---
-
 ## 常用操作
-
 ### 停止容器
 ```bash
 docker stop outline-rag-bridge
 ```
-
 ### 启动已停止的容器
 ```bash
 docker start outline-rag-bridge
 ```
-
 ### 查看实时日志
 ```bash
 docker logs -f outline-rag-bridge
 ```
-
 ### 更新容器（保留数据）
 ```bash
 docker stop outline-rag-bridge
@@ -256,7 +207,6 @@ docker load < new-version-image.tar.gz
 # 使用同样的 -v bridge-data:/app/data 启动，数据自动保留
 docker run -d --name outline-rag-bridge ... -v bridge-data:/app/data ... outline-rag-bridge:latest
 ```
-
 ### 备份数据
 ```bash
 # bridge.db 存储在 Docker volume 中
@@ -265,11 +215,8 @@ docker volume inspect bridge-data
 # 备份
 tar czf bridge-backup-$(date +%Y%m%d).tar.gz /var/lib/docker/volumes/bridge-data/_data/
 ```
-
 ---
-
 ## 故障排查
-
 | 问题 | 原因 | 解决办法 |
 |---|---|---|
 | 容器状态 `unhealthy` | LightRAG 不可达或启动中 | 检查 `LIGHTRAG_API_URL` 是否正确 |
