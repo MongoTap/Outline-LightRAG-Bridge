@@ -1,0 +1,45 @@
+services:
+  # ============================================================================
+  #  OutlineRAGBridge — 将 Outline Webhook 同步到 LightRAG
+  #
+  #  使用前必须配置：
+  #    1. OUTLINE_WEBHOOK_SECRET（与 Outline 后台 Webhook 配置一致）
+  #    2. LIGHTRAG_API_URL（指向局域网中已有的 LightRAG 实例）
+  #
+  #  确保 LightRAG 和 Outline 连接到同一网络：
+  #    docker network connect rag-network lightrag
+  #    docker network connect rag-network outline
+  # ============================================================================
+  outline-rag-bridge:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: outline-rag-bridge
+    restart: unless-stopped
+    ports:
+      - "${BRIDGE_PORT:-9641}:9641"
+    environment:
+      # ---- 必须配置 ----
+      - OUTLINE_WEBHOOK_SECRET=${OUTLINE_WEBHOOK_SECRET:?请设置 OUTLINE_WEBHOOK_SECRET}
+      # ---- LightRAG 连接（指向外部现有实例） ----
+      - LIGHTRAG_API_URL=${LIGHTRAG_API_URL:-http://lightrag:9621}
+      # ---- 可选配置（有合理的默认值） ----
+      - DB_PATH=/app/data/bridge.db
+      - POLL_INTERVAL=2
+      - POLL_MAX_ATTEMPTS=60
+      - DELETE_RETRY_ATTEMPTS=3
+      - DELETE_RETRY_DELAY=5
+      - LOG_LEVEL=INFO
+    volumes:
+      # 持久化 SQLite 映射数据，重启容器不丢失
+      - bridge-data:/app/data
+    networks:
+      - rag-network
+
+volumes:
+  bridge-data:
+
+networks:
+  rag-network:
+    name: rag-network
+    driver: bridge
