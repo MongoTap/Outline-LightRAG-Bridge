@@ -54,7 +54,7 @@ fi
 
 # 如果 PID 文件未找到，尝试从进程中查找
 if [ -z "${PID}" ]; then
-    PID=$(pgrep -f "python.*bridge.py" 2>/dev/null || echo "")
+    PID=$(pgrep -f "python.*-m\s+bridge" 2>/dev/null || echo "")
     if [ -n "${PID}" ]; then
         log_info "从进程列表中找到 bridge 进程（PID: ${PID}）"
     fi

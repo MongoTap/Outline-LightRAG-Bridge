@@ -23,7 +23,7 @@ log_error() { echo -e "${RED}[ERROR]${NC} $1"; }
 
 # ── 配置 ─────────────────────────────────────────────────────────────
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-BRIDGE_PY="${SCRIPT_DIR}/bridge.py"
+BRIDGE_DIR="${SCRIPT_DIR}/bridge"
 ENV_FILE="${SCRIPT_DIR}/.env"
 LOG_DIR="${SCRIPT_DIR}/logs"
 PID_FILE="${SCRIPT_DIR}/bridge.pid"
@@ -42,9 +42,9 @@ else
     exit 1
 fi
 
-# 检查 bridge.py
-if [ ! -f "${BRIDGE_PY}" ]; then
-    log_error "bridge.py 未找到: ${BRIDGE_PY}"
+# 检查 bridge 包
+if [ ! -d "${BRIDGE_DIR}" ]; then
+    log_error "bridge 包未找到: ${BRIDGE_DIR}"
     exit 1
 fi
 
@@ -94,7 +94,7 @@ if [ "${DAEMON}" = true ]; then
     # ── 后台守护进程模式 ────────────────────────────────────────────
     # 使用 nohup 确保进程在终端关闭后继续运行
     # 标准输出和错误都重定向到日志文件
-    nohup "${PYTHON_CMD}" "${BRIDGE_PY}" \
+    nohup "${PYTHON_CMD}" -m bridge \
         >> "${LOG_FILE}" 2>&1 &
 
     PID=$!
@@ -136,5 +136,5 @@ else
     # ── 前台调试模式 ────────────────────────────────────────────────
     log_info "前台模式启动（Ctrl+C 停止）..."
     echo ""
-    "${PYTHON_CMD}" "${BRIDGE_PY}" 2>&1 | tee -a "${LOG_FILE}"
+    "${PYTHON_CMD}" -m bridge 2>&1 | tee -a "${LOG_FILE}"
 fi

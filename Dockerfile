@@ -40,8 +40,8 @@ RUN sed -i "s|deb.debian.org|$APT_MIRROR|g" /etc/apt/sources.list.d/debian.sourc
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt --index-url $PIP_INDEX_URL
 
-# 复制应用
-COPY bridge.py .
+# 复制应用（bridge/ Python 包）
+COPY bridge/ ./bridge/
 
 # ── 环境变量默认值（全部可通过 -e 覆盖） ──────────────────────────────────
 ENV LIGHTRAG_API_URL=http://lightrag:9621
@@ -64,4 +64,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
 # 以非 root 用户运行
 USER appuser
 
-CMD ["python", "bridge.py"]
+CMD ["python", "-m", "bridge"]

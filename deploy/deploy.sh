@@ -205,7 +205,7 @@ mkdir -p "${INSTALL_DIR}/packages"
 # 复制文件
 log_info "复制文件到 ${INSTALL_DIR}..."
 
-cp "${SCRIPT_DIR}/bridge.py"            "${INSTALL_DIR}/bridge.py"
+cp -r "${SCRIPT_DIR}/bridge"                "${INSTALL_DIR}/bridge"
 cp "${SCRIPT_DIR}/requirements.txt"     "${INSTALL_DIR}/requirements.txt"
 cp "${SCRIPT_DIR}/.env"                 "${INSTALL_DIR}/.env"
 cp -r "${SCRIPT_DIR}/packages/"*        "${INSTALL_DIR}/packages/"
