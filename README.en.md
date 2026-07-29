@@ -11,7 +11,7 @@ This guide is intended for **fully offline LAN environments**.
 
 ```mermaid
 graph LR
-    subgraph LAN[Local Network (Offline)]
+    subgraph LAN["Local Network (Offline)"]
         O["Outline<br/>(Existing Service)<br/>IP: a.b.c.d"]
         B["outline-rag-bridge<br/>Port 9641"]
         L["LightRAG<br/>(Existing Service)<br/>IP: x.y.z.w<br/>Port 9621"]
