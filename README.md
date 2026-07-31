@@ -36,6 +36,49 @@ graph LR
 
 ---
 
+## 内部架构与工作流
+
+```mermaid
+graph TD
+    W["Webhook<br/>POST /webhook"]
+    C["coalesce_pending<br/>按文档合并冗余任务"]
+    Q[("pending_tasks 表<br/>任务队列 · 唯一事实来源")]
+    K["task_worker<br/>单消费者串行"]
+    S["定时窗口调度<br/>TASK_SCHEDULE_*"]
+    L["LightRAG API"]
+    M[("document_mappings 表<br/>Outline ↔ LightRAG 映射")]
+
+    W --> C --> Q
+    Q --> K
+    S -. 窗口外休眠 .-> K
+    K --> L
+    K --> M
+```
+
+**DB 驱动的任务队列**：
+- Webhook 入队时先按文档合并，写入 `pending_tasks` 表（每文档至多 1 行），再唤醒 Worker
+- Worker 单消费者串行：从表里取最早任务 → 处理 → 删除该行
+- 收益：窗口外队列不占内存；崩溃重启后未完成任务自动恢复，无需手动干预
+
+**同文档任务合并规则**（入队时实时执行）：
+| 已有待处理任务 | 新事件 | 合并结果 |
+|---|---|---|
+| CREATE / UPDATE | CREATE / UPDATE | 最新内容胜出；已同步 → UPDATE（先删旧再插新），未同步 → CREATE |
+| CREATE / UPDATE | DELETE | 已同步 → 只留 DELETE；从未同步 → 全部丢弃 |
+| DELETE | CREATE / UPDATE | 转 UPDATE，只留最新内容 |
+| DELETE | DELETE | 只留一个 DELETE |
+
+**定时窗口**：
+- 固定时长窗口：到点强制停止处理，未处理任务累计到下一窗口
+- 支持跨午夜（如 `23:00` 开始、`240` 分钟 → 次日 `03:00` 结束）
+- 窗口外只入队不处理（任务持久化在 DB，不占内存）
+
+**崩溃恢复与重试**：
+- 启动时 `recover_pending_tasks()` 合并清理历史冗余任务，剩余任务由 Worker 自动继续处理
+- 任务失败自动重试（默认 3 次），重试耗尽后丢弃并记录日志
+
+---
+
 ## 部署前置条件
 
 | 条件 | 说明 |
@@ -187,8 +230,8 @@ curl http://localhost:9621/documents | python3 -m json.tool
 | `BRIDGE_PORT` | `9641` | 否 | 容器内部监听端口 |
 | `POLL_INTERVAL` | `2` | 否 | LightRAG 异步处理轮询间隔（秒） |
 | `POLL_MAX_ATTEMPTS` | `60` | 否 | 最大轮询次数（默认最长等 120 秒） |
-| `DELETE_RETRY_ATTEMPTS` | `3` | 否 | 删除文档时最大重试次数 |
-| `DELETE_RETRY_DELAY` | `5` | 否 | 删除重试间隔（秒） |
+| `DELETE_RETRY_ATTEMPTS` | `2` | 否 | 删除文档时最大重试次数 |
+| `DELETE_RETRY_DELAY` | `3` | 否 | 删除重试间隔（秒） |
 | `TASK_SCHEDULE_ENABLED` | `false` | 否 | 开启夜间定时批量处理。`true` 时任务仅在每日窗口内处理，白天只入队不处理 |
 | `TASK_SCHEDULE_START` | `00:00` | 否 | 每日处理窗口开始时间（`HH:MM`，服务器本地时区） |
 | `TASK_SCHEDULE_DURATION_MINUTES` | `480` | 否 | 处理窗口时长（分钟），窗口结束后停止处理 |

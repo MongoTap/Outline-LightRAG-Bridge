@@ -39,6 +39,49 @@ graph LR
 
 ---
 
+## Internal Architecture & Workflow
+
+```mermaid
+graph TD
+    W["Webhook<br/>POST /webhook"]
+    C["coalesce_pending<br/>merge redundant tasks"]
+    Q[("pending_tasks table<br/>task queue · source of truth")]
+    K["task_worker<br/>single consumer"]
+    S["schedule gate<br/>TASK_SCHEDULE_*"]
+    L["LightRAG API"]
+    M[("document_mappings table<br/>Outline ↔ LightRAG mapping")]
+
+    W --> C --> Q
+    Q --> K
+    S -. sleep outside window .-> K
+    K --> L
+    K --> M
+```
+
+**DB-driven task queue**:
+- On webhook, tasks are merged per document and written to the `pending_tasks` table (at most one row per document), then the worker is woken.
+- A single worker consumer processes serially: take the oldest row → process → delete it.
+- Benefits: no memory usage outside the window; unfinished tasks are automatically resumed after a crash/restart.
+
+**Per-document coalescing rules** (executed in real time on enqueue):
+| Pending task | New event | Result |
+|---|---|---|
+| CREATE / UPDATE | CREATE / UPDATE | Latest content wins; synced → UPDATE (delete old + insert new), unsynced → CREATE |
+| CREATE / UPDATE | DELETE | Synced → keep only DELETE; never synced → drop all |
+| DELETE | CREATE / UPDATE | Convert to UPDATE, keep latest content |
+| DELETE | DELETE | Keep a single DELETE |
+
+**Scheduling window**:
+- Fixed-duration window: processing stops when the window ends; unfinished tasks accumulate to the next window.
+- Supports crossing midnight (e.g. starts `23:00`, `240` min → ends `03:00` next day).
+- Outside the window tasks are only enqueued, not processed (persisted in DB, no memory usage).
+
+**Crash recovery & retries**:
+- On startup, `recover_pending_tasks()` coalesces stale historical rows; the remaining tasks are processed automatically by the worker.
+- Failed tasks are retried (default 3 times), then dropped with a log entry.
+
+---
+
 ## Prerequisites
 
 | Condition | Description |
@@ -227,8 +270,8 @@ curl http://localhost:9621/documents | python3 -m json.tool
 | `BRIDGE_PORT` | `9641` | No | Container internal listen port |
 | `POLL_INTERVAL` | `2` | No | LightRAG async processing poll interval (seconds) |
 | `POLL_MAX_ATTEMPTS` | `60` | No | Max poll attempts (default waits up to 120s) |
-| `DELETE_RETRY_ATTEMPTS` | `3` | No | Max retries for document deletion |
-| `DELETE_RETRY_DELAY` | `5` | No | Delay between delete retries (seconds) |
+| `DELETE_RETRY_ATTEMPTS` | `2` | No | Max retries for document deletion |
+| `DELETE_RETRY_DELAY` | `3` | No | Delay between delete retries (seconds) |
 | `TASK_SCHEDULE_ENABLED` | `false` | No | Enable scheduled nightly batch. When `true`, tasks are only processed inside the daily window; during the day they are queued but not processed |
 | `TASK_SCHEDULE_START` | `00:00` | No | Daily processing window start time (`HH:MM`, server local time) |
 | `TASK_SCHEDULE_DURATION_MINUTES` | `480` | No | Processing window length (minutes); processing stops when the window ends |
