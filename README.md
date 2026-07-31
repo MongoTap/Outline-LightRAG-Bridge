@@ -27,6 +27,12 @@ graph LR
 - **出站**（连接 LightRAG）：通过环境变量 `LIGHTRAG_API_URL` 配置
 - **健康检查**：`GET /health`
 - **映射查询**：`GET /mappings`
+- **队列状态**：`GET /queue`（待处理任务数 + 定时窗口状态）
+
+> **夜间批量处理**：算力有限时，可设置 `TASK_SCHEDULE_ENABLED=true`，
+> 任务将只在每日 `TASK_SCHEDULE_START` 起的 `TASK_SCHEDULE_DURATION_MINUTES` 分钟内处理，
+> 白天只入队不处理。队列会对同一文档的多次编辑自动合并（只保留最新状态），
+> 未同步过的文档收到删除事件会直接丢弃。
 
 ---
 
@@ -37,7 +43,7 @@ graph LR
 | **Linux 服务器** | x86_64 架构，已安装 Docker |
 | **Docker 版本** | ≥ 20.10 |
 | **已有服务** | 局域网中已有可用的 Outline 和 LightRAG 服务 |
-| **离线镜像包** | `outline-rag-bridge-v1.0.0.tar.gz`（已提前构建好，约 58MB） |
+| **离线镜像包** | `outline-rag-bridge-v1.1.0.tar.gz`（已提前构建好，约 58MB） |
 
 ---
 
@@ -45,7 +51,7 @@ graph LR
 
 ```bash
 # 在 tar.gz 文件所在目录执行
-docker load < outline-rag-bridge-v1.0.0.tar.gz
+docker load < outline-rag-bridge-v1.1.0.tar.gz
 docker tag outline-rag-bridge:latest outline-rag-bridge:latest 2>/dev/null || true
 
 # 验证镜像已导入
@@ -183,6 +189,9 @@ curl http://localhost:9621/documents | python3 -m json.tool
 | `POLL_MAX_ATTEMPTS` | `60` | 否 | 最大轮询次数（默认最长等 120 秒） |
 | `DELETE_RETRY_ATTEMPTS` | `3` | 否 | 删除文档时最大重试次数 |
 | `DELETE_RETRY_DELAY` | `5` | 否 | 删除重试间隔（秒） |
+| `TASK_SCHEDULE_ENABLED` | `false` | 否 | 开启夜间定时批量处理。`true` 时任务仅在每日窗口内处理，白天只入队不处理 |
+| `TASK_SCHEDULE_START` | `00:00` | 否 | 每日处理窗口开始时间（`HH:MM`，服务器本地时区） |
+| `TASK_SCHEDULE_DURATION_MINUTES` | `480` | 否 | 处理窗口时长（分钟），窗口结束后停止处理 |
 | `LOG_LEVEL` | `INFO` | 否 | 日志级别：`DEBUG`/`INFO`/`WARNING`/`ERROR` |
 ---
 ## 常用操作

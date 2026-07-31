@@ -72,6 +72,12 @@ VALUES (?, ?, ?, ?, ?, ?);
 """
 SQL_DELETE_PENDING_TASK = "DELETE FROM pending_tasks WHERE id = ?;"
 SQL_LIST_PENDING_TASKS = "SELECT * FROM pending_tasks ORDER BY id ASC;"
+SQL_LIST_PENDING_BY_DOC = "SELECT * FROM pending_tasks WHERE outline_doc_id = ? ORDER BY id ASC;"
+SQL_DELETE_PENDING_BY_DOC = "DELETE FROM pending_tasks WHERE outline_doc_id = ?;"
+SQL_DELETE_PENDING_BY_TYPES = (
+    "DELETE FROM pending_tasks WHERE outline_doc_id = ? AND task_type IN ({placeholders});"
+)
+SQL_PENDING_ROW_EXISTS = "SELECT COUNT(*) AS cnt FROM pending_tasks WHERE id = ?;"
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -170,3 +176,40 @@ def db_list_pending_tasks() -> list[dict]:
     rows = conn.execute(SQL_LIST_PENDING_TASKS).fetchall()
     conn.close()
     return [dict(r) for r in rows]
+
+
+def db_list_pending_by_doc(outline_doc_id: str) -> list[dict]:
+    """查询指定文档的所有待处理任务（供同文档合并使用）。"""
+    conn = sqlite3.connect(settings.db_path)
+    conn.row_factory = sqlite3.Row
+    rows = conn.execute(SQL_LIST_PENDING_BY_DOC, (outline_doc_id,)).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def db_delete_pending_by_doc(outline_doc_id: str):
+    """删除指定文档的全部待处理任务。"""
+    conn = sqlite3.connect(settings.db_path)
+    conn.execute(SQL_DELETE_PENDING_BY_DOC, (outline_doc_id,))
+    conn.commit()
+    conn.close()
+
+
+def db_delete_pending_by_types(outline_doc_id: str, task_types: list[str]):
+    """删除指定文档中指定类型（TaskType.value 字符串）的待处理任务。"""
+    placeholders = ",".join("?" for _ in task_types)
+    conn = sqlite3.connect(settings.db_path)
+    conn.execute(
+        SQL_DELETE_PENDING_BY_TYPES.format(placeholders=placeholders),
+        (outline_doc_id, *task_types),
+    )
+    conn.commit()
+    conn.close()
+
+
+def db_pending_row_exists(task_id: int) -> bool:
+    """判断指定行 ID 是否仍存在于 pending_tasks（用于重试前校验是否已被合并取代）。"""
+    conn = sqlite3.connect(settings.db_path)
+    row = conn.execute(SQL_PENDING_ROW_EXISTS, (task_id,)).fetchone()
+    conn.close()
+    return row[0] > 0

@@ -18,9 +18,15 @@ from fastapi import FastAPI, HTTPException, Request
 
 from bridge.auth import verify_outline_signature
 from bridge.config import settings, logger
-from bridge.database import init_db, db_enqueue_task, db_list
+from bridge.database import init_db, db_list
 from bridge.models import OutlineWebhookPayload, QueueTask, TaskType
-from bridge.tasks import task_queue, task_worker, recover_pending_tasks
+from bridge.tasks import (
+    coalesce_pending,
+    get_queue_status,
+    recover_pending_tasks,
+    task_worker,
+    wake_worker,
+)
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -66,7 +72,7 @@ app = FastAPI(
     title="OutlineRAGBridge",
     description="Outline → LightRAG 文档同步桥接服务。"
                 "监听 Outline Webhook，自动同步文档变更到 LightRAG 知识库。",
-    version="1.0.0",
+    version="1.1.0",
     lifespan=lifespan,
 )
 
@@ -85,6 +91,12 @@ async def health():
 async def list_mappings(limit: int = 50, offset: int = 0):
     """查看文档 ID 映射关系（调试/管理接口）。"""
     return {"mappings": db_list(limit, offset)}
+
+
+@app.get("/queue")
+async def queue_status():
+    """查看待处理任务数与定时窗口状态（运维/调试）。"""
+    return get_queue_status()
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -155,9 +167,12 @@ async def handle_webhook(request: Request):
         logger.info("忽略未处理的事件类型: %s", event)
         return {"status": "ignored", "event": event}
 
-    # 任务持久化 + 入队
-    task.db_id = db_enqueue_task(task)
-    await task_queue.put(task)
-    logger.info("任务已入队: %s %s qsize=%d", event, doc.id, task_queue.qsize())
+    # 任务持久化 + 入队（按文档合并冗余任务）
+    db_id = coalesce_pending(task)
+    if db_id is not None:
+        wake_worker()
+        logger.info("任务已入队: %s %s", event, doc.id)
+    else:
+        logger.info("任务已合并丢弃（无需执行）: %s %s", event, doc.id)
 
     return {"status": "accepted", "event": event, "doc_id": doc.id}

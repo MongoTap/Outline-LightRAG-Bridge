@@ -35,6 +35,7 @@ BRIDGE_ENV = {
     "POLL_MAX_ATTEMPTS": "15",
     "DELETE_RETRY_ATTEMPTS": "5",
     "DELETE_RETRY_DELAY": "1",
+    "TASK_SCHEDULE_ENABLED": "false",
     "PYTHONUNBUFFERED": "1",
 }
 
@@ -336,18 +337,22 @@ def t_delete_busy():
 
 @test("多事件串行 — CREATE+CREATE+DELETE")
 def t_multi():
+    # 串行处理（每个事件完成后才发下一个），避免同文档合并导致的竞态
     r1 = bridge_post("/webhook", wb("create", "s1", "a", "a"))
-    r2 = bridge_post("/webhook", wb("create", "s2", "b", "b"))
-    r3 = bridge_post("/webhook", wb("delete", "s1"))
     assert r1.status_code == 200
+    await_mapping(CLIENT, "s1")
+
+    r2 = bridge_post("/webhook", wb("create", "s2", "b", "b"))
     assert r2.status_code == 200
+    await_mapping(CLIENT, "s2")
+
+    r3 = bridge_post("/webhook", wb("delete", "s1"))
     assert r3.status_code == 200
+    await_no_mapping(CLIENT, "s1")
 
-    time.sleep(5)  # 等处理
-
-    assert find_mapping(CLIENT, "s1") is None
     m2 = find_mapping(CLIENT, "s2")
     assert m2 is not None and m2["status"] == "ready"
+    assert find_mapping(CLIENT, "s1") is None
     assert len(MOCK.inserted_texts) == 2
     assert len(MOCK.deleted_doc_ids) == 1
 

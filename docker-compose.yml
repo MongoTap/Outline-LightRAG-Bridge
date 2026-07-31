@@ -29,6 +29,10 @@ services:
       - POLL_MAX_ATTEMPTS=60
       - DELETE_RETRY_ATTEMPTS=3
       - DELETE_RETRY_DELAY=5
+      # ---- 夜间定时批量处理（可选） ----
+      - TASK_SCHEDULE_ENABLED=${TASK_SCHEDULE_ENABLED:-false}
+      - TASK_SCHEDULE_START=${TASK_SCHEDULE_START:-00:00}
+      - TASK_SCHEDULE_DURATION_MINUTES=${TASK_SCHEDULE_DURATION_MINUTES:-480}
       - LOG_LEVEL=INFO
     volumes:
       # 持久化 SQLite 映射数据，重启容器不丢失

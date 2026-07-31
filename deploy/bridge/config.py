@@ -4,8 +4,9 @@
 """
 
 import logging
+from datetime import datetime
 
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings
 
 
@@ -48,6 +49,37 @@ class Settings(BaseSettings):
     delete_retry_delay: int = Field(
         default=3, description="每次重试之间的等待时间（秒）。"
     )
+
+    # ── 定时处理窗口配置（夜间批量处理） ───────────────────────────
+    task_schedule_enabled: bool = Field(
+        default=False,
+        description="是否启用定时窗口处理。false = 任务实时处理（默认）；"
+                    "true = 仅在每日窗口内处理，窗口外只入队不处理。",
+    )
+    task_schedule_start: str = Field(
+        default="00:00",
+        description="每日处理窗口开始时间 (HH:MM, 24h)，使用服务器本地时区。",
+    )
+    task_schedule_duration_minutes: int = Field(
+        default=480,
+        description="处理窗口时长（分钟），窗口结束后停止处理，任务累计到下一窗口。",
+    )
+
+    @field_validator("task_schedule_start")
+    @classmethod
+    def _validate_schedule_start(cls, v: str) -> str:
+        try:
+            datetime.strptime(v, "%H:%M")
+        except ValueError:
+            raise ValueError("TASK_SCHEDULE_START 必须为 HH:MM 格式（24h）")
+        return v
+
+    @field_validator("task_schedule_duration_minutes")
+    @classmethod
+    def _validate_schedule_duration(cls, v: int) -> int:
+        if not (1 <= v <= 1440):
+            raise ValueError("TASK_SCHEDULE_DURATION_MINUTES 必须在 1~1440 之间")
+        return v
 
     # ── 日志配置 ───────────────────────────────────────────────────
     log_level: str = Field(default="INFO", description="日志级别：DEBUG, INFO, WARNING, ERROR")

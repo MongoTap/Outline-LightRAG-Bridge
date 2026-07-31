@@ -28,6 +28,14 @@ graph LR
 - **Outbound** (to LightRAG): Configured via env var `LIGHTRAG_API_URL`
 - **Health Check**: `GET /health`
 - **Mapping Query**: `GET /mappings`
+- **Queue Status**: `GET /queue` (pending task count + scheduling window state)
+
+> **Scheduled nightly batch**: For limited compute, set `TASK_SCHEDULE_ENABLED=true`.
+> Tasks are then processed only inside the daily window starting at
+> `TASK_SCHEDULE_START` for `TASK_SCHEDULE_DURATION_MINUTES` minutes;
+> during the day they are queued but not processed. The queue automatically
+> coalesces multiple edits of the same document (keeping only the latest state),
+> and delete events for documents never synced to LightRAG are dropped outright.
 
 ---
 
@@ -38,7 +46,7 @@ graph LR
 | **Linux Server** | x86_64 architecture, Docker installed |
 | **Docker Version** | ≥ 20.10 |
 | **Existing Services** | Outline and LightRAG must already be running on the LAN |
-| **Offline Image** | `outline-rag-bridge-v1.0.0.tar.gz` (pre-built, ~58MB) |
+| **Offline Image** | `outline-rag-bridge-v1.1.0.tar.gz` (pre-built, ~58MB) |
 
 ---
 
@@ -46,7 +54,7 @@ graph LR
 
 ```bash
 # Run in the directory containing the tar.gz file
-docker load < outline-rag-bridge-v1.0.0.tar.gz
+docker load < outline-rag-bridge-v1.1.0.tar.gz
 docker tag outline-rag-bridge:latest outline-rag-bridge:latest 2>/dev/null || true
 
 # Verify the image was imported
@@ -221,6 +229,9 @@ curl http://localhost:9621/documents | python3 -m json.tool
 | `POLL_MAX_ATTEMPTS` | `60` | No | Max poll attempts (default waits up to 120s) |
 | `DELETE_RETRY_ATTEMPTS` | `3` | No | Max retries for document deletion |
 | `DELETE_RETRY_DELAY` | `5` | No | Delay between delete retries (seconds) |
+| `TASK_SCHEDULE_ENABLED` | `false` | No | Enable scheduled nightly batch. When `true`, tasks are only processed inside the daily window; during the day they are queued but not processed |
+| `TASK_SCHEDULE_START` | `00:00` | No | Daily processing window start time (`HH:MM`, server local time) |
+| `TASK_SCHEDULE_DURATION_MINUTES` | `480` | No | Processing window length (minutes); processing stops when the window ends |
 | `LOG_LEVEL` | `INFO` | No | Log level: `DEBUG`/`INFO`/`WARNING`/`ERROR` |
 
 ---
