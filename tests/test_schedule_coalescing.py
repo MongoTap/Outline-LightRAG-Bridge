@@ -137,6 +137,17 @@ def t_create_delete_synced():
     assert_one("d5", "delete")
 
 
+@test("CREATE 处理中 + DELETE（status=processing）→ 只留 DELETE 收尾")
+def t_create_processing_delete():
+    # 模拟 worker 已取走 CREATE 开始处理：mapping 存在但 id 为空、状态 processing
+    db_upsert("d9", "", "t", "processing")
+    db_enqueue_task(QueueTask(TaskType.CREATE, "d9", "t", "v1"))
+    rid = coalesce_pending(QueueTask(TaskType.DELETE, "d9"))
+    # 不能丢弃：创建完成后 LightRAG 里会有一个文档，需要 DELETE 收尾
+    assert rid is not None
+    assert_one("d9", "delete")
+
+
 @test("DELETE + CREATE（已同步）→ 转 UPDATE 只留最新")
 def t_delete_create_synced():
     db_upsert("d6", "lightrag-6", "t", "ready")
@@ -383,7 +394,8 @@ if __name__ == "__main__":
     # Part A 单元测试
     unit_tests = [
         t_create_create, t_create_update_unsynced, t_update_update_synced,
-        t_create_delete_unsynced, t_create_delete_synced, t_delete_create_synced,
+        t_create_delete_unsynced, t_create_delete_synced, t_create_processing_delete,
+        t_delete_create_synced,
         t_delete_delete, t_delete_alone_unsynced, t_coalesce_all,
         t_window_normal, t_window_cross_midnight,
     ]

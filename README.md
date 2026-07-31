@@ -95,13 +95,12 @@ graph TD
 ```bash
 # 在 tar.gz 文件所在目录执行
 docker load < outline-rag-bridge-v1.1.0.tar.gz
-docker tag outline-rag-bridge:latest outline-rag-bridge:latest 2>/dev/null || true
 
 # 验证镜像已导入
 docker images outline-rag-bridge
 # 输出示例：
 # REPOSITORY               TAG       IMAGE ID       SIZE
-# outline-rag-bridge       latest    246e7e4f0301   253MB
+# outline-rag-bridge       v1.1.0    246e7e4f0301   253MB
 ```
 ---
 ## 步骤二：配置环境变量
@@ -126,21 +125,27 @@ docker run -d \
   -p 9641:9641 \
   -e LIGHTRAG_API_URL="http://192.168.1.10:9621" \
   -e OUTLINE_WEBHOOK_SECRET="my-strong-secret-2024" \
+  -e TZ="Asia/Shanghai" \
+  -e TASK_SCHEDULE_ENABLED="true" \
+  -e TASK_SCHEDULE_START="00:00" \
+  -e TASK_SCHEDULE_DURATION_MINUTES="480" \
   -v bridge-data:/app/data \
-  outline-rag-bridge:latest
+  outline-rag-bridge:v1.1.0
 ```
 参数说明：
 - `-d`：后台运行
 - `--restart unless-stopped`：容器崩溃或服务器重启时自动拉起
 - `-p 9641:9641`：将宿主机 9641 端口映射到容器 9641 端口
 - `-e`：配置环境变量（见上表）
+- `-e TZ`：**时区映射**。定时窗口按容器本地时间计算，必须与你的服务器时区一致（如 `Asia/Shanghai`），否则定时执行的时间会错位
+- `-e TASK_SCHEDULE_ENABLED/START/DURATION_MINUTES`：夜间定时批量处理窗口（可选）。不需要定时批量时删掉这 3 行即可（默认实时处理）；需要时把 `TASK_SCHEDULE_ENABLED` 设为 `true`
 - `-v bridge-data:/app/data`：持久化 SQLite 数据库文件（映射记录）
 ### 方式 B：docker-compose
 创建 `docker-compose.yml`：
 ```yaml
 services:
   outline-rag-bridge:
-    image: outline-rag-bridge:latest
+    image: outline-rag-bridge:v1.1.0
     container_name: outline-rag-bridge
     restart: unless-stopped
     ports:
@@ -148,6 +153,10 @@ services:
     environment:
       - LIGHTRAG_API_URL=http://192.168.1.10:9621
       - OUTLINE_WEBHOOK_SECRET=my-strong-secret-2024
+      - TZ=Asia/Shanghai
+      - TASK_SCHEDULE_ENABLED=true
+      - TASK_SCHEDULE_START=00:00
+      - TASK_SCHEDULE_DURATION_MINUTES=480
       - DB_PATH=/app/data/bridge.db
     volumes:
       - bridge-data:/app/data
@@ -257,7 +266,7 @@ docker rm outline-rag-bridge
 # 加载新版本镜像...
 docker load < new-version-image.tar.gz
 # 使用同样的 -v bridge-data:/app/data 启动，数据自动保留
-docker run -d --name outline-rag-bridge ... -v bridge-data:/app/data ... outline-rag-bridge:latest
+docker run -d --name outline-rag-bridge ... -v bridge-data:/app/data ... outline-rag-bridge:v1.1.0
 ```
 ### 备份数据
 ```bash

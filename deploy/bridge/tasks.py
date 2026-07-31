@@ -67,12 +67,16 @@ def coalesce_pending(task: QueueTask) -> Optional[int]:
     pending_types = {p["task_type"] for p in pending}
 
     if task.task_type == TaskType.DELETE:
-        # 文档从未同步到 LightRAG → 丢弃该文档全部待处理任务，无需执行
-        if not had_sync:
+        # 文档在 LightRAG 中"存在或即将存在"（含处理中的 in-flight 创建）→ 需要 DELETE 收尾。
+        # 若只按 lightrag_doc_id 判断，创建处理中（status=processing、id 为空）到达的
+        # DELETE 会被误判为"从未同步"而丢弃，导致创建完成后 LightRAG 残留孤儿文档。
+        doc_in_lightrag = had_sync or bool(mapping and mapping.get("status") == "processing")
+        if not doc_in_lightrag:
+            # 文档从未同步到 LightRAG（也无处理中的创建）→ 丢弃该文档全部待处理任务，无需执行
             if pending:
                 db_delete_pending_by_doc(doc_id)
             return None
-        # 删除旧的内容任务（CREATE/UPDATE 被删除事件取代）
+        # 删除旧的内容任务（CREATE/UPDATE 被删除事件取代，含处理中的 in-flight 行）
         if pending_types - {TaskType.DELETE.value}:
             db_delete_pending_by_types(doc_id, [TaskType.CREATE.value, TaskType.UPDATE.value])
         # 已有 DELETE 待处理，不重复入队

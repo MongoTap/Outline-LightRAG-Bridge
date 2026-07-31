@@ -98,13 +98,12 @@ graph TD
 ```bash
 # Run in the directory containing the tar.gz file
 docker load < outline-rag-bridge-v1.1.0.tar.gz
-docker tag outline-rag-bridge:latest outline-rag-bridge:latest 2>/dev/null || true
 
 # Verify the image was imported
 docker images outline-rag-bridge
 # Example output:
 # REPOSITORY               TAG       IMAGE ID       SIZE
-# outline-rag-bridge       latest    246e7e4f0301   253MB
+# outline-rag-bridge       v1.1.0    246e7e4f0301   253MB
 ```
 
 ---
@@ -139,8 +138,12 @@ docker run -d \
   -p 9641:9641 \
   -e LIGHTRAG_API_URL="http://192.168.1.10:9621" \
   -e OUTLINE_WEBHOOK_SECRET="my-strong-secret-2024" \
+  -e TZ="Asia/Shanghai" \
+  -e TASK_SCHEDULE_ENABLED="true" \
+  -e TASK_SCHEDULE_START="00:00" \
+  -e TASK_SCHEDULE_DURATION_MINUTES="480" \
   -v bridge-data:/app/data \
-  outline-rag-bridge:latest
+  outline-rag-bridge:v1.1.0
 ```
 
 Parameters:
@@ -148,6 +151,8 @@ Parameters:
 - `--restart unless-stopped`: Auto-restart on crash or server reboot
 - `-p 9641:9641`: Map host port 9641 to container port 9641
 - `-e`: Set environment variables (see table above)
+- `-e TZ`: **Timezone mapping**. The scheduling window is computed using the container's local time, so it must match your server's timezone (e.g. `Asia/Shanghai`), otherwise the scheduled time will be off.
+- `-e TASK_SCHEDULE_ENABLED/START/DURATION_MINUTES`: Optional nightly batch window. Remove these 3 lines if you don't need batching (default is real-time processing); set `TASK_SCHEDULE_ENABLED` to `true` to enable it.
 - `-v bridge-data:/app/data`: Persist SQLite database (mapping records)
 
 ### Option B: docker-compose
@@ -157,7 +162,7 @@ Create `docker-compose.yml`:
 ```yaml
 services:
   outline-rag-bridge:
-    image: outline-rag-bridge:latest
+    image: outline-rag-bridge:v1.1.0
     container_name: outline-rag-bridge
     restart: unless-stopped
     ports:
@@ -165,6 +170,10 @@ services:
     environment:
       - LIGHTRAG_API_URL=http://192.168.1.10:9621
       - OUTLINE_WEBHOOK_SECRET=my-strong-secret-2024
+      - TZ=Asia/Shanghai
+      - TASK_SCHEDULE_ENABLED=true
+      - TASK_SCHEDULE_START=00:00
+      - TASK_SCHEDULE_DURATION_MINUTES=480
       - DB_PATH=/app/data/bridge.db
     volumes:
       - bridge-data:/app/data
@@ -303,7 +312,7 @@ docker rm outline-rag-bridge
 # Load the new version image...
 docker load < new-version-image.tar.gz
 # Start with the same -v bridge-data:/app/data to retain data
-docker run -d --name outline-rag-bridge ... -v bridge-data:/app/data ... outline-rag-bridge:latest
+docker run -d --name outline-rag-bridge ... -v bridge-data:/app/data ... outline-rag-bridge:v1.1.0
 ```
 
 ### Backup data
